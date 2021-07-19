@@ -1,70 +1,112 @@
 import pygame
-from pygame.locals import *
+import neat
+import os
+
 from GameObjects.Bird import Bird
 from GameObjects.Ground import Ground
 from GameObjects.Pipes import Pipe
 from GameObjects.Scoreboard import Scoreboard
 
-SCREEN_SIZE = (450, 640)
 
-pygame.init()
+def eval_genomes(genomes, config):
+    SCREEN_SIZE = (450, 640)
 
-screen = pygame.display.set_mode(SCREEN_SIZE)
+    pygame.init()
 
-running = True
-game_start = False
+    screen = pygame.display.set_mode(SCREEN_SIZE)
 
-clock = pygame.time.Clock()
+    networks = []
+    birds = []
+    ge = []
+    for genome_id, genome in genomes:
+        genome.fitness = 0.0
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        networks.append(net)
+        birds.append(Bird(SCREEN_SIZE[1] * 0.4))
+        ge.append(genome)
 
-bird = Bird(SCREEN_SIZE[1] * 0.4)
-base = Ground(575)
-pipes = [Pipe(400)]
-scoreboard = Scoreboard()
+    running = True
 
-bg = pygame.image.load('GameObjects/sprites/bg.png').convert_alpha()
+    clock = pygame.time.Clock()
 
-# Game Loop
-while running:
-    clock.tick(120)
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == KEYDOWN and event.key == K_SPACE and game_start:
-            bird.jump()
-        if event.type == KEYDOWN and event.key == K_SPACE and not game_start:
-            game_start = True
-            bird.jump()
+    base = Ground(575)
+    pipes = [Pipe(400)]
+    scoreboard = Scoreboard()
 
-    screen.blit(pygame.transform.scale(bg, SCREEN_SIZE), (0, 0))
-    # print(clock.get_fps())
+    bg = pygame.image.load('GameObjects/sprites/bg.png').convert_alpha()
 
-    for pipe in pipes:
-        pipe.draw(screen)
-    base.draw(screen)
-    bird.draw(screen)
-    scoreboard.show(screen, SCREEN_SIZE)
+    while running and len(birds) > 0:
+        clock.tick(120)
 
-    if game_start:
-        bird.move()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                pygame.quit()
+                break
+
+        screen.blit(pygame.transform.scale(bg, SCREEN_SIZE), (0, 0))
+
+        for pipe in pipes:
+            pipe.draw(screen)
+        base.draw(screen)
+        scoreboard.show(screen, SCREEN_SIZE)
+        for bird in birds:
+            bird.draw(screen)
+
+        next_pipe = 0
+        if len(pipes) > 0 and birds[0].x > pipes[0].x + pipes[0].image.get_width():
+            next_pipe = 1
+
+        for bird in birds:
+            index = birds.index(bird)
+            ge[index].fitness += 0.1
+            bird.move()
+
+            output = networks[index].activate((bird.y, pipes[next_pipe].height, pipes[next_pipe].bottom))
+
+            if output[0] > 0.5:
+                bird.jump()
+
         base.move()
+
+        if pipes[-1].x <= 200:
+            pipes.append(Pipe(500))
+        if pipes[0].x == 50:
+            scoreboard.increment()
+
         for pipe in pipes:
             pipe.move()
 
-    if pipes[-1].x <= 200:
-        pipes.append(Pipe(500))
-    if pipes[0].x == 50:
-        scoreboard.increment()
+            if pipe.x <= -100:
+                pipes.remove(pipe)
 
-    for pipe in pipes:
-        if pipe.x <= -100:
-            pipes.remove(pipe)
-        if pipe.collide(bird) or base.collide(bird):
-            game_start = False
-            bird = Bird(SCREEN_SIZE[1] * 0.4)
-            base = Ground(575)
-            pipes = [Pipe(400)]
-            scoreboard = Scoreboard()
+            for bird in birds:
+                if pipe.collide(bird) or base.collide(bird) or bird.y <= -50:
+                    ge[birds.index(bird)].fitness -= 0.5
+                    networks.pop(birds.index(bird))
+                    ge.pop(birds.index(bird))
+                    birds.pop(birds.index(bird))
 
-    pygame.display.update()
+        pygame.display.update()
 
-pygame.quit()
+
+def run(config_file):
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_file)
+
+    p = neat.Population(config)
+
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+
+    winner = p.run(eval_genomes, 30)
+
+    print('\nBest genome:\n{!s}'.format(winner))
+
+
+if __name__ == '__main__':
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'config.txt')
+    run(config_path)

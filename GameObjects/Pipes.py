@@ -4,7 +4,7 @@ import random
 
 class Pipe(pygame.sprite.Sprite):
 
-    GAP = 150
+    GAP = 140
     VEL = 2
 
     def __init__(self, x):
@@ -19,7 +19,9 @@ class Pipe(pygame.sprite.Sprite):
         )
         self.bottom_pipe = self.image
 
-        self.height = random.randint(50, 370)
+        self.GAP = self.GAP + random.randint(0, 55)
+
+        self.height = random.randint(50, 350)
         self.top = self.height - self.top_pipe.get_height()
         self.bottom = self.height + self.GAP
         self.rect = self.image.get_rect()
